@@ -317,6 +317,7 @@ func RootCommand(dockerCli command.Cli, backend api.Service) *cobra.Command {
 		imagesCommand(&opts, backend),
 		versionCommand(),
 		buildCommand(&opts, backend),
+		tagCommand(&opts, backend),
 		pushCommand(&opts, backend),
 		pullCommand(&opts, backend),
 		createCommand(&opts, backend),
