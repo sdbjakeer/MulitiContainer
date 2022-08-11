@@ -6,10 +6,21 @@ on:
       tag:
         description: "Release Tag"
         required: true
+      dry-run:
+        description: "Build, sign, verify but do not release"
+        required: false
+        type: boolean
+        default: true
+
+permissions: read-all
+
 env:
   GO_VERSION: 1.18.5
+
 jobs:
-  upload-release:
+  build:
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code into the Go module directory
@@ -30,14 +41,93 @@ jobs:
         run: make GIT_TAG=${{ github.event.inputs.tag }} -f builder.Makefile cross
 
       - name: Compute checksums
-        run: cd bin; for f in *; do shasum --binary --algorithm 256 $f | tee -a checksums.txt > $f.sha256; done
+        working-directory: bin/
+        run: for f in *; do shasum --binary --algorithm 256 $f | tee -a checksums.txt > $f.sha256; done
+
+      - name: Generate SLSA subjects
+        id: hash
+        working-directory: bin/
+        run: |
+          set -euo pipefail
+          echo "::set-output name=hashes::$(cat checksums.txt | base64 -w0)"
 
       - name: License
         run: cp packaging/* bin/
 
-      - uses: ncipollo/release-action@v1
+      - uses: actions/upload-artifact@v3
         with:
-          artifacts: "bin/*"
+          name: "bin"
+          path: "bin/*"
+
+  provenance:
+    needs: [build]
+    permissions:
+      actions:  read # To read the workflow path.
+      id-token: write # To sign the provenance.
+      contents: write # To add assets to a release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+
+  release:
+    needs: [build, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Install the verifier. This be replaced with the GHA in the future.
+      - name: Install the verfier
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh -R slsa-framework/slsa-verifier release download v1.2.0 -p "slsa-verifier-linux-amd64"
+          chmod ug+x slsa-verifier-linux-amd64
+          # Note: see https://github.com/slsa-framework/slsa-verifier/blob/main/SHA256SUM.md
+          COMPUTED_HASH=$(sha256sum slsa-verifier-linux-amd64 | cut -d ' ' -f1)
+          EXPECTED_HASH="37db23392c7918bb4e243cdb097ed5f9d14b9b965dc1905b25bc2d1c0c91bf3d"
+          if [[ "$EXPECTED_HASH" != "$COMPUTED_HASH" ]];then
+              echo "error: expected $EXPECTED_HASH, computed $COMPUTED_HASH"
+              exit 1
+          fi
+      # Download binaries and license.
+      - uses: actions/download-artifact@v3
+        with:
+          name: "bin"
+      # Download provenance file.
+      - uses: actions/download-artifact@v3
+        with:
+          name: "${{ needs.provenance.outputs.attestation-name }}"
+      # Verify binaries.
+      - name: Verify binaries
+        env:
+          PROVENANCE: "${{ needs.provenance.outputs.attestation-name }}"
+        run: |
+          set -euo pipefail
+
+          for f in *;
+          do
+              if [[ ! -f "$f.sha256" ]]; then
+                continue
+              fi
+
+              echo "Verifying $f"
+              ./slsa-verifier-linux-amd64 -artifact-path "$f" \
+                                      -provenance "$PROVENANCE" \
+                                      -source "github.com/$GITHUB_REPOSITORY" \
+                                      -branch v2
+
+          done
+
+          # The slsa verifier is not part of the project, so remove it.
+          rm ./slsa-verifier-linux-amd64
+
+      # Upload to release.
+      - uses: ncipollo/release-action@v1
+        if: '! inputs.dry-run'
+        with:
+          artifacts: "*"
           generateReleaseNotes: true
           draft: true
           commit: "v2"
