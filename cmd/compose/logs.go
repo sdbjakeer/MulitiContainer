@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/cli/cli/command"
 	"github.com/spf13/cobra"
 
@@ -29,7 +30,6 @@ import (
 
 type logsOptions struct {
 	*ProjectOptions
-	composeOptions
 	follow     bool
 	index      int
 	tail       string
@@ -41,6 +41,7 @@ type logsOptions struct {
 }
 
 func logsCommand(p *ProjectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
+	p.Dependencies = types.IgnoreDependencies
 	opts := logsOptions{
 		ProjectOptions: p,
 	}

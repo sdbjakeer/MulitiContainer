@@ -40,7 +40,7 @@ import (
 )
 
 type runOptions struct {
-	*composeOptions
+	*ProjectOptions
 	Service       string
 	Command       []string
 	environment   []string
@@ -116,11 +116,9 @@ func (options runOptions) apply(project *types.Project) error {
 
 func runCommand(p *ProjectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
 	options := runOptions{
-		composeOptions: &composeOptions{
-			ProjectOptions: p,
-		},
-		capAdd:  opts.NewListOpts(nil),
-		capDrop: opts.NewListOpts(nil),
+		ProjectOptions: p,
+		capAdd:         opts.NewListOpts(nil),
+		capDrop:        opts.NewListOpts(nil),
 	}
 	createOpts := createOptions{}
 	buildOpts := buildOptions{

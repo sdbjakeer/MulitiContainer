@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/compose/v2/cmd/formatter"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/docker/compose/v2/pkg/utils"
@@ -65,6 +66,7 @@ func (p *psOptions) parseFilter() error {
 }
 
 func psCommand(p *ProjectOptions, dockerCli command.Cli, backend api.Service) *cobra.Command {
+	p.Dependencies = types.IgnoreDependencies
 	opts := psOptions{
 		ProjectOptions: p,
 	}
