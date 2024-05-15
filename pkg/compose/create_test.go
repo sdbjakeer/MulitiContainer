@@ -275,3 +275,31 @@ func TestDefaultNetworkSettings(t *testing.T) {
 		assert.Check(t, cmp.Nil(networkConfig))
 	})
 }
+
+func TestPrepareServiceDNS(t *testing.T) {
+	t.Run("returns DNS list without empty strings", func(t *testing.T) {
+		const (
+			serviceName = "myService"
+			dns1        = "dns-1"
+			dns2        = "dns-2"
+		)
+		project := composetypes.Project{
+			Services: composetypes.Services{
+				serviceName: composetypes.ServiceConfig{
+					DNS: []string{
+						dns1,
+						"",
+						dns2,
+						"",
+					},
+				},
+			},
+		}
+
+		prepareServiceDNS(&project)
+		dnsConfig := project.Services[serviceName].DNS
+		assert.Equal(t, len(dnsConfig), 2)
+		assert.Equal(t, dnsConfig[0], dns1)
+		assert.Equal(t, dnsConfig[1], dns2)
+	})
+}
