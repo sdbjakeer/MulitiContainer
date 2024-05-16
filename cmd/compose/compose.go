@@ -384,7 +384,7 @@ func RootCommand(dockerCli command.Cli, backend Backend) *cobra.Command { //noli
 			ctx := cmd.Context()
 
 			// (1) process env vars
-			err := setEnvWithDotEnv(&opts)
+			err := setEnvWithLocalDotEnv(&opts)
 			if err != nil {
 				return err
 			}
@@ -594,18 +594,28 @@ func RootCommand(dockerCli command.Cli, backend Backend) *cobra.Command { //noli
 	return c
 }
 
-func setEnvWithDotEnv(prjOpts *ProjectOptions) error {
-	if len(prjOpts.EnvFiles) == 0 {
-		if envFiles := os.Getenv(ComposeEnvFiles); envFiles != "" {
-			prjOpts.EnvFiles = strings.Split(envFiles, ",")
-		}
+// If user has a local .env file, load it as os.environment so it can be used to set COMPOSE_ variables
+// This also allows to override values set by the default .env in a compose project when ran from a distinct folder
+func setEnvWithLocalDotEnv(prjOpts *ProjectOptions) error {
+	if len(prjOpts.EnvFiles) > 0 {
+		return nil
 	}
-	options, err := prjOpts.toProjectOptions()
+	wd, err := os.Getwd()
 	if err != nil {
 		return compose.WrapComposeError(err)
 	}
 
-	envFromFile, err := dotenv.GetEnvFromFile(composegoutils.GetAsEqualsMap(os.Environ()), options.EnvFiles)
+	defaultDotEnv := filepath.Join(wd, ".env")
+
+	s, err := os.Stat(defaultDotEnv)
+	if os.IsNotExist(err) || s.IsDir() {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	envFromFile, err := dotenv.GetEnvFromFile(composegoutils.GetAsEqualsMap(os.Environ()), []string{defaultDotEnv})
 	if err != nil {
 		return err
 	}
